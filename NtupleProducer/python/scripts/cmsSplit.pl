@@ -694,6 +694,8 @@ foreach my $j (1 .. $jobs) {
     close OUT;
 }
 
+my @tostage = ();
+
 ## make merge jobs
 foreach my $m (sort(keys(%mergeList))) {
     my $pyfile = $basename . $label . "_merge_$m.py";
@@ -720,6 +722,7 @@ process.out = cms.OutputModule("PoolOutputModule",fileName = cms.untracked.strin
 process.end = cms.EndPath(process.out)   
 EOF
     close OUT;
+    push @tostage, $out;
 }
 
 ## make merge jobs (Nano)
@@ -730,6 +733,7 @@ foreach my $m (sort(keys(%mergeNano))) {
     next if $pretend;
     open OUT, "> $pyfile" or die "Can't write to $pyfile\n";  push @cleanup, $pyfile;
     my $out = $mergeNano{$m}->{'outfile'};
+    if (defined($outdir)) { $out = $outdir . "/" . basename($out); }
     my $in  = join(" ",@{$mergeNano{$m}->{'infiles'}});
     print OUT <<EOF;
 #!/bin/bash
@@ -746,6 +750,7 @@ fi
 \$MERGE $out $in
 EOF
     close OUT;
+    push @tostage, $out;
 }
 
 ## make merge jobs (Dump)
@@ -756,12 +761,14 @@ foreach my $m (sort(keys(%mergeDump))) {
     next if $pretend;
     open OUT, "> $pyfile" or die "Can't write to $pyfile\n";  push @cleanup, $pyfile;
     my $out = $mergeDump{$m}->{'outfile'};
+    if (defined($outdir)) { $out = $outdir . "/" . basename($out); }
     my $in  = join(" ",@{$mergeDump{$m}->{'infiles'}});
     print OUT <<EOF;
 #!/bin/bash
 cat $in > $out
 EOF
     close OUT;
+    push @tostage, $out;
 }
 
 
@@ -780,6 +787,7 @@ if ($tfsFile and not($nomerge)) {
         print OUT "hadd -ff $tfsOut " . join(" ",@tfsMerge) . "\n";
         close OUT;
         chmod 0755, $pyfile;
+        push @tostage, $tfsOut;
     }
 }
 
@@ -875,6 +883,12 @@ EOF
             print OUT "bash $tfsfile > $tfslog 2>&1; \n"; push @cleanup, $tfslog;
         }
         print OUT "echo 'All merge jobs done.'\n";
+        if ($eosoutdir) {
+            print OUT "echo 'Copying output to EOS'\n";
+            foreach my $f (@tostage) {
+                print OUT "eos cp -p $f $eosoutdir/\n";
+            }
+        }
     }
     close OUT;
     chmod 0755, $pyfile;

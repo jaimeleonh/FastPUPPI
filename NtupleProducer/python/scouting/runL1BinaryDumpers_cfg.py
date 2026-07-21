@@ -17,7 +17,7 @@ process.maxEvents = cms.untracked.PSet(input = cms.untracked.int32(100))
 process.MessageLogger.cerr.FwkReport.reportEvery = 10
 
 process.source = cms.Source("PoolSource",
-    fileNames = cms.untracked.vstring(f'/store/cmst3/group/l1tr/FastPUPPI/15_1_X/fpinputs_140X/v1/TT_TuneCP5_14TeV-powheg-pythia8/TT_PU200_151Xv0/250910_165631/0000/inputs151X_1-{i}.root' for i in range(1,11)),
+    fileNames = cms.untracked.vstring(f'/store/cmst3/group/l1tr/FastPUPPI/15_1_X/fpinputs_151X/v1/TT_PU200/inputs151X_{i}.root' for i in range(1,11)),
 )
 
 process.load('Configuration.Geometry.GeometryExtendedRun4D110Reco_cff')
@@ -70,6 +70,10 @@ process.egDump = cms.EDAnalyzer("L1CTL2EgammaBinaryDumper",
                 interleaveOutputs = cms.bool(False), # False = first 12 photons, then electrons; True = pho1, ele1, pho2, ele2, ...
                 outName = cms.string("egamma.dump"))
 
+process.vertexDump = cms.EDAnalyzer("L1VertexBinaryDumper",
+                src = cms.InputTag("l1tVertexFinderEmulator", "L1VerticesEmulation"),
+                outName = cms.string("vertices.dump"))
+
 process.l1tLayer1HGCalALl = cms.EDProducer("L1TPFCandMultiMerger",
     pfProducers = cms.VInputTag(
         cms.InputTag("l1tLayer1HGCal"),
@@ -98,9 +102,103 @@ process.p_dumps = cms.EndPath(
     process.pfDumpHGCal +
     process.jetDump +
     process.tkMuDump +
-    process.egDump
+    process.egDump +
+    process.vertexDump
 )
 process.p_dumps.associate(process.deps)
+
+process.muStubTable = cms.EDProducer("SimpleTriggerL1MuonStubFlatTableProducer",
+    src = cms.InputTag("l1tStubsGmt", "tps"),
+    cut = cms.string(""),
+    name = cms.string("MuStub"),
+    doc = cms.string("MuStub from GMT"),
+    singleton = cms.bool(False), # the number of entries is variable
+    extension = cms.bool(False), # this is the main table
+    variables = cms.PSet(
+        etaRegion = Var("etaRegion",  int),
+        phiRegion = Var("phiRegion",  int),
+        depthRegion = Var("depthRegion",  int),
+        tfLayer = Var("tfLayer",  int),
+        phi = Var("coord1 * 3.1415926536/512",  float, doc="phi coordinate of the stub (at least for stubs in the barrel)"),
+        eta = Var("eta1 * 3.1415926536/128",  float, doc="eta coordinate of the stub (at least for stubs in the barrel)"),
+        coord1 = Var("coord1",  int),
+        coord2 = Var("coord2",  int),
+        eta1 = Var("eta1",  int),
+        eta2 = Var("eta2",  int),
+        isBarrel  = Var("isBarrel",  int),
+        bx  = Var("bxNum",  int),
+        time  = Var("time",  int),
+        etaQuality  = Var("etaQuality",  int),
+        quality  = Var("quality",  int),
+    )
+)
+process.dtPhiStubTable = cms.EDProducer("L1P2DTPhStubFlatTableProducer",
+    src = cms.InputTag("dtTriggerPhase2PrimitiveDigis"),
+    cut = cms.string(""),
+    name = cms.string("DTPhiStub"),
+    doc = cms.string("DT Phi Stub"),
+    extension = cms.bool(False), # this is the main table
+    variables = cms.PSet(
+         bx = Var("bxNum() - 20", int),
+         wheel = Var("whNum()", int),
+         sector = Var("scNum()", int),
+         station = Var("stNum()", int),
+         superlayer = Var("slNum()", int),
+         hwPhiAngle = Var("phi()", int),
+         hwPhiBending = Var("phiBend()", int),
+         quality = Var("quality()", int),
+         index = Var("index()", int),
+         hwT0 = Var("t0()", int),
+         t0 = Var("(t0() - 32*20)/32. * 25", float, "time in ns, centered on BX0"),
+         chi2 = Var("chi2()", int),
+         rpcFlag= Var("rpcFlag()", int),
+    )
+)
+process.dtThetaStubTable = cms.EDProducer("L1P2DTThStubFlatTableProducer",
+    src = cms.InputTag("dtTriggerPhase2PrimitiveDigis"),
+    cut = cms.string(""),
+    name = cms.string("DTThetaStub"),
+    doc = cms.string("DT Theta Stub"),
+    extension = cms.bool(False), # this is the main table
+    variables = cms.PSet(
+         bx = Var("bxNum() - 20", int),
+         wheel = Var("whNum()", int),
+         sector = Var("scNum()", int),
+         station = Var("stNum()", int),
+         hwZGlobal = Var("z()", int),
+         hwKSlope = Var("k()", int),
+         quality = Var("quality()", int),
+         index = Var("index()", int),
+         hwT0 = Var("t0()", int),
+         t0 = Var("(t0() - 32*20)/32. * 25", float, "time in ns, centered on BX0"),
+         chi2 = Var("chi2()", int),
+         rpcFlag= Var("rpcFlag()", int),
+    )
+)
+
+
+process.staMuTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
+    src = cms.InputTag("l1tSAMuonsGmt","prompt"),
+    cut = cms.string(""),
+    name = cms.string("StaMu"),
+    doc = cms.string("StaMuons from GMT (Prompt)"),
+    singleton = cms.bool(False), # the number of entries is variable
+    extension = cms.bool(False), # this is the main table
+    variables = cms.PSet(
+        pt   = LazyVar("phPt",  float),
+        eta  = LazyVar("phEta", float),
+        phi  = LazyVar("phPhi", float),
+        z0   = LazyVar("phZ0",  float, doc="Z coordinate of the reconstructed production vertex"),
+        dxy   = LazyVar("phD0",  float, doc="transverse impact parameter (always zero currently)"),
+        charge = LazyVar("phCharge", int, doc="charge"),
+        quality = LazyVar("hwQual", int, doc="quality (TBD)"),
+    )
+)
+process.staMuDisplTable = process.staMuTable.clone(
+    src = cms.InputTag("l1tSAMuonsGmt","displaced"),
+    name = cms.string("StaMuDisplaced"),
+    doc = cms.string("StaMuons from GMT (displaced)"),
+)
 
 process.tkMuTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
     src = cms.InputTag("l1tTkMuonsGmt"),
@@ -176,8 +274,9 @@ process.tkMuMCTable = cms.EDProducer("CandMCMatchTableProducer",
     docString = cms.string("MC matching"),
 )
 
-process.p_mu = cms.Path(process.tkMuTable)
+process.p_mu = cms.Path(process.tkMuTable + process.muStubTable + process.staMuTable + process.staMuDisplTable + process.dtPhiStubTable + process.dtThetaStubTable)
 process.p_muMC = cms.Path(process.genMu + process.genMuTable + process.tkMuMCMatch + process.tkMuMCTable)
+process.p_mu.associate(cms.Task(process.l1tStubsGmt, process.l1tTkMuonsGmt, process.l1tSAMuonsGmt))
 
 process.puppiTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
         src = cms.InputTag("l1tLayer2Deregionizer:Puppi"),
@@ -280,6 +379,8 @@ process.puppiMCTable = cms.EDProducer("CandMCMatchTableProducer",
 process.p_puppi = cms.Path(process.puppiTable + process.puppiExtTable)
 process.p_pf = cms.Path(process.pfTable + process.pfExtTable)
 process.p_puppiMC = cms.Path(process.genW + process.genPiFromW + process.genWTable + process.genPiTable + process.puppiMCMatch + process.puppiMCTable)
+process.p_puppi.associate(process.deps)
+process.p_pf.associate(process.deps)
 
 process.puppiJetsTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
         src = cms.InputTag("l1tSC4PFL1PuppiExtendedCorrectedEmulator"),
@@ -364,6 +465,7 @@ process.p_jetsExt = cms.Path(
     process.ak4L1PFJets + process.ak4L1PFJetsTable + process.ak4PFJetsIndexTable +
     process.ak4L1PFExtJets + process.ak4L1PFExtJetsTable + process.ak4PFExtJetsIndexTable
 )
+process.p_jetsExt.associate(process.deps)
 
 process.genJetsTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
         src = cms.InputTag("ak4GenJetsNoNu"),
@@ -391,6 +493,133 @@ process.genJetFlavourTable = cms.EDProducer("GenJetFlavourTableProducer",
 )
 process.p_jets = cms.Path(process.puppiJetsTable + process.puppiJetsIndexTable)
 process.p_jetsMC = cms.Path(process.genJetsTable + process.selectedHadronsAndPartons + process.genFlavourInfo + process.genJetFlavourTable)
+process.p_jets.associate(process.deps)
+
+process.hgcalClusterTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
+        src = cms.InputTag("l1tHGCalBackEndLayer2Producer","HGCalBackendLayer2Processor3DClustering"),
+        cut = cms.string(""),
+        name = cms.string("HGC"),
+        doc = cms.string("L1 HGCalCluster candidates"),
+        singleton = cms.bool(False), # the number of entries is variable
+        extension = cms.bool(False), # this is the main table
+        variables = cms.PSet(
+            pt   = Var("pt",  float),
+            phi  = Var("phi", float),
+            eta  = Var("eta", float),
+            nTcs = LazyVar("constituents.size",  int,precision=8),
+            ptEm = LazyVar("iPt('EM')",  float,precision=8),
+            hwQual = LazyVar("hwQual",  int,precision=8),
+            showerlength = LazyVar("showerLength", int),
+            coreshowerlength = LazyVar("coreShowerLength", int),
+            firstlayer = LazyVar("firstLayer", int),
+            maxlayer = LazyVar("maxLayer", int),
+            hoe = LazyVar("hOverE", float),
+            eot = LazyVar("eot", float),
+            see = LazyVar("sigmaEtaEtaTot", float),
+            spp = LazyVar("sigmaPhiPhiTot", float),
+            szz = LazyVar("sigmaZZ", float),
+            meanz = LazyVar("abs(zBarycenter)", float),
+    )
+)
+
+process.barrelEmClusterTable = cms.EDProducer("L1P2GCTEmDigiClusterFlatTableProducer",
+        src = cms.InputTag("l1tPhase2L1CaloEGammaEmulator", "GCTDigitizedClusterToCorrelator"),
+        cut = cms.string(""),
+        name = cms.string("Ecal"),
+        doc = cms.string("L1 Barrel ECal candidates"),
+        singleton = cms.bool(False), # the number of entries is variable
+        extension = cms.bool(False), # this is the main table
+        variables = cms.PSet(
+            pt   = Var("ptFloat",  float),
+            isoFlags  = Var("passes_iso() + 2 * passes_looseTkiso()", int),
+            shapeFlags  = Var("passes_ss() + 2 * passes_looseTkss()", int),
+    )
+)
+
+process.barrelPFClusterTable = cms.EDProducer("L1P2GCTPFClusterFlatTableProducer",
+        src = cms.InputTag("l1tPhase2CaloPFClusterEmulator", "GCTPFCluster"),
+        cut = cms.string(""),
+        name = cms.string("GCTPF"),
+        doc = cms.string("L1 GCT PF clusters"),
+        singleton = cms.bool(False), # the number of entries is variable
+        extension = cms.bool(False), # this is the main table
+        variables = cms.PSet(
+            pt   = Var("clusterEt",  float),
+            eta  = Var("clusterEta", int),
+            phi  = Var("clusterPhi", int),
+    )
+)
+process.p_cal = cms.Path(process.hgcalClusterTable + process.barrelEmClusterTable + process.barrelPFClusterTable)
+process.p_cal.associate(cms.Task(
+    process.l1tPhase2L1CaloEGammaEmulator,
+    process.l1tPhase2CaloPFClusterEmulator,
+    process.l1tPhase2GCTBarrelToCorrelatorLayer1Emulator))
+
+process.tracksTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
+    src = cms.InputTag("l1tPFTracksFromL1Tracks"),
+    cut = cms.string(""),
+    name = cms.string("Tk"),
+    doc = cms.string("L1 tracks"),
+    singleton = cms.bool(False),
+    extension = cms.bool(False),
+    variables = cms.PSet(
+        pt = Var("pt", float, precision=8),
+        phi = Var("phi", float, precision=8),
+        eta = Var("eta", float, precision=8),
+        d0 = LazyVar("trackWord.getD0", float, precision=8),
+        z0 = LazyVar("trackWord.getZ0", float, precision=8),
+        maxAbsDxy = LazyVar("max(abs(track.POCA.x), abs(track.POCA.y))", float, precision=8),
+        chi2rphi = LazyVar("trackWord.getChi2RPhi", float, precision=8),
+        chi2rz = LazyVar("trackWord.getChi2RZ", float, precision=8),
+        bendchi2 = LazyVar("trackWord.getBendChi2", float, precision=8),
+        nStubs = LazyVar("trackWord.getNStubs", int, precision=8),
+        mva = LazyVar("trackWord.getMVAQuality", float, precision=8),
+    )
+)
+process.tracksExtTable = process.tracksTable.clone(
+    src = cms.InputTag("l1tPFTracksFromL1TracksExtended"),
+    name = "TkExtended",
+    doc = "Extended L1 tracks",
+)
+process.p_tracks = cms.Path(process.tracksTable + process.tracksExtTable)
+process.p_tracks.associate(cms.Task(process.l1tPFTracksFromL1Tracks, process.l1tPFTracksFromL1TracksExtended))
+
+process.load('Configuration.StandardSequences.SimPhase2L1GlobalTriggerEmulator_cff')
+process.load("L1Trigger.Configuration.Phase2GTMenus.SeedDefinitions.step1_2024_explicitSeeds.l1tGTMenu_cff")
+import DPGAnalysis.Phase2L1TNanoAOD.l1tPh2GTtables_cff
+process.l1tP2GTTrigConvert = DPGAnalysis.Phase2L1TNanoAOD.l1tPh2GTtables_cff.l1tP2GTTrigConvert.clone(
+    prefix = "L1P2_",
+)
+process.p_gt = cms.Path(process.l1tGTProducerSequence + process.l1tGTAlgoBlockProducerSequence + process.l1tP2GTTrigConvert)
+process.p_gt.associate(process.deps)
+process.p_gt.associate(cms.Task(
+    process.l1tTrackSelectionProducerForJets,
+    process.l1tTrackSelectionProducerForEtMiss,
+    process.l1tTrackSelectionProducerExtendedForJets,
+    process.l1tTrackVertexAssociationProducerForJets,
+    process.l1tTrackVertexAssociationProducerExtended,
+    process.l1tTrackVertexAssociationProducerExtendedForJets,
+    process.l1tTrackVertexAssociationProducerForEtMiss,
+    process.l1tGTTInputProducerExtended,
+    process.l1tTrackerEmuEtMiss,
+    process.l1tTrackJetsEmulation,
+    process.l1tTrackJetsExtendedEmulation,
+    process.l1tTrackerEmuHTMiss,
+    process.l1tTrackerEmuHTMissExtended,
+    process.l1tTrackerEmuEtMiss,
+    process.l1tSC4PFL1PuppiCorrectedEmulator,
+    process.l1tSC8PFL1PuppiCorrectedEmulator,
+    process.l1tNNTauProducerPuppi,
+    process.l1tMETPFProducer,
+    process.l1tSC4PFL1PuppiCorrectedEmulatorMHT,
+))
+process.l1tTrackSelectionProducerForJets.processSimulatedTracks = False
+process.l1tTrackSelectionProducerForEtMiss.processSimulatedTracks = False
+process.l1tTrackSelectionProducerExtendedForJets.processSimulatedTracks = False
+process.l1tTrackVertexAssociationProducerForJets.processSimulatedTracks = False
+process.l1tTrackVertexAssociationProducerExtended.processSimulatedTracks = False
+process.l1tTrackVertexAssociationProducerExtendedForJets.processSimulatedTracks = False
+process.l1tTrackVertexAssociationProducerForEtMiss.processSimulatedTracks = False
 
 process.genPartTable = cms.EDProducer("SimpleGenParticleFlatTableProducer",
     src = cms.InputTag("genParticles"),
@@ -440,7 +669,6 @@ process.l1nnPuppiTauTable = cms.EDProducer( "SimpleTriggerL1PFTauFlatTableProduc
         passMass = Var("passMass", int),
     )
 )
-process.p_taus = cms.Path(process.l1tNNTauProducerPuppi + process.l1nnPuppiTauTable)
 process.load("PhysicsTools/JetMCAlgos/TauGenJets_cfi")
 process.load("PhysicsTools/JetMCAlgos/TauGenJetsDecayModeSelectorAllHadrons_cfi")
 process.genVisTaus = cms.EDProducer("GenVisTauProducer",
@@ -469,7 +697,9 @@ for i in range(5):  # max N GenVisTau daughters
                 Var(f"? daughterRefVector().size() > {i} ? daughterRefVector().at({i}).{var} : -1",
                 float if var != "pdgId" else "int16")
                 )
+process.p_taus = cms.Path(process.l1tNNTauProducerPuppi + process.l1nnPuppiTauTable)
 process.p_tauMC = cms.Path(process.tauGenJets + process.tauGenJetsSelectorAllHadrons + process.genVisTaus + process.genVisTauTable)
+process.p_jets.associate(process.deps)
 
 process.genVertexTable = cms.EDProducer("SimpleXYZPointFlatTableProducer",
     src = cms.InputTag("genParticles:xyz0"),
@@ -497,6 +727,7 @@ process.l1VertexTable = cms.EDProducer("VertexWordFlatTableProducer",
 )
 process.p_pv = cms.Path(process.l1VertexTable)
 process.p_pvMC = cms.Path(process.genVertexTable)
+process.p_pv.associate(cms.Task(process.l1tVertexFinderEmulator))
 
 process.phoTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
     src = cms.InputTag("l1tLayer2EG","L1CtTkEm"),
@@ -599,10 +830,12 @@ process.p_pho = cms.Path(process.phoTable)
 process.p_phoMC = cms.Path(process.genPho + process.genPhoTable + process.phoMCMatch + process.phoMCTable)
 process.p_ele = cms.Path(process.eleTable)
 process.p_eleMC = cms.Path(process.genEle + process.genEleTable + process.eleMCMatch + process.eleMCTable)
+process.p_pho.associate(process.deps)
+process.p_ele.associate(process.deps)
 
 process.outnano = cms.OutputModule("NanoAODOutputModule",
     fileName = cms.untracked.string("l1Nano.root"),
-    outputCommands = cms.untracked.vstring("drop *", "keep nanoaodFlatTable_*Table_*_*"),
+    outputCommands = cms.untracked.vstring("drop *", "keep nanoaodFlatTable_*Table_*_*", "keep edmTriggerResults_l1tP2GTTrigConvert_*_*"),
     compressionLevel = cms.untracked.int32(4),
     compressionAlgorithm = cms.untracked.string("ZLIB"),
 )
@@ -614,5 +847,15 @@ def noPU():
         if not pfc: continue
         pfc.emVsPUID.wp = "-1.0"
 
+schedule = [p for (k,p) in process.paths_().items() if k.startswith("p") and k not in ["p_dumps", "p_gt"]]
+schedule += [process.p_gt]
+schedule += [process.p_dumps]
+schedule += [process.end]
+process.schedule = cms.Schedule(schedule)
+
 def noNano():
     process.schedule = cms.Schedule(process.p_dumps)
+
+def noBinary():
+    schedule.remove(process.p_dumps)
+    process.schedule = cms.Schedule(schedule)

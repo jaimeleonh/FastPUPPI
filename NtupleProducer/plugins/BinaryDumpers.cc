@@ -14,6 +14,7 @@
 #include "DataFormats/L1TMuonPhase2/interface/TrackerMuon.h"
 #include "DataFormats/L1TCorrelator/interface/TkElectron.h"
 #include "DataFormats/L1TCorrelator/interface/TkEm.h"
+#include "DataFormats/L1Trigger/interface/VertexWord.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -170,6 +171,36 @@ private:
   bool interleave_;
 };
 
+class VertexDumperHelper {
+public:
+  VertexDumperHelper(const edm::ParameterSet &cfg, edm::ConsumesCollector cc)
+      : src_(cc.consumes<edm::View<l1t::VertexWord>>(cfg.getParameter<edm::InputTag>("src"))) {}
+  void dump(const edm::Event &iEvent, std::fstream &out) {
+    edm::Handle<edm::View<l1t::VertexWord>> src;
+    iEvent.getByToken(src_, src);
+    uint64_t nobj = src->size();
+    nobj |= (0b10llu << 62);  // event header
+    out.write(reinterpret_cast<const char *>(&nobj), sizeof(uint64_t));
+    for (auto &c : *src) {
+      uint64_t packed = packVertex(c);
+      out.write(reinterpret_cast<const char *>(&packed), sizeof(uint64_t));
+    }
+  }
+
+  uint64_t packVertex(l1t::VertexWord vertex) {
+    return vertex.validBits() +
+      ((uint64_t) vertex.z0Bits() << l1t::VertexWord::VertexBitLocations::kZ0LSB) +
+      ((uint64_t) vertex.multiplicityBits() << l1t::VertexWord::VertexBitLocations::kNTrackInPVLSB) +
+      ((uint64_t) vertex.ptBits() << l1t::VertexWord::VertexBitLocations::kSumPtLSB) +
+      ((uint64_t) vertex.qualityBits() << l1t::VertexWord::VertexBitLocations::kQualityLSB) +
+      ((uint64_t) vertex.inverseMultiplicityBits() << l1t::VertexWord::VertexBitLocations::kNTrackOutPVLSB) +
+      ((uint64_t) vertex.unassignedBits() << l1t::VertexWord::VertexBitLocations::kUnassignedLSB);
+  }
+
+private:
+  edm::EDGetTokenT<edm::View<l1t::VertexWord>> src_;
+};
+
 template <typename Helper>
 class BinaryDumper : public edm::one::EDAnalyzer<> {
 public:
@@ -190,9 +221,11 @@ typedef BinaryDumper<PuppiDumperHelper> L1PuppiBinaryDumper;
 typedef BinaryDumper<JetDumperHelper> L1JetBinaryDumper;
 typedef BinaryDumper<TrackerMuonDumperHelper> L1TrackerMuonBinaryDumper;
 typedef BinaryDumper<CTL2EgammaDumperHelper> L1CTL2EgammaBinaryDumper;
+typedef BinaryDumper<VertexDumperHelper> L1VertexBinaryDumper;
 //define this as a plug-in
 #include "FWCore/Framework/interface/MakerMacros.h"
 DEFINE_FWK_MODULE(L1PuppiBinaryDumper);
 DEFINE_FWK_MODULE(L1JetBinaryDumper);
 DEFINE_FWK_MODULE(L1TrackerMuonBinaryDumper);
 DEFINE_FWK_MODULE(L1CTL2EgammaBinaryDumper);
+DEFINE_FWK_MODULE(L1VertexBinaryDumper);
